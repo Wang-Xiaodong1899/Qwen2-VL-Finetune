@@ -1,11 +1,8 @@
 #!/bin/bash
 
 export WANDB_PROJECT=Qwen2-VL-7B-Video-SFT
-export WANDB_NAME=llava-178k-youtube-qwen-vl-max-CoT-Qwen2-VL-7B-0-30s-2k-f64-fps1-MAX196-epoch-3
-
-export FPS_MAX_FRAMES=64
-
-# export WANDB_MODE=offline
+export WANDB_NAME=llava-178k-youtube-QA-DT-f64-fps1-MAX196-epoch-2
+# export WANDB_MODE=offlinew
 
 # You can use 2B instead of 7B
 # MODEL_NAME="Qwen/Qwen2-VL-7B-Instruct"
@@ -20,13 +17,16 @@ BATCH_PER_DEVICE=4
 NUM_DEVICES=8
 GRAD_ACCUM_STEPS=$((GLOBAL_BATCH_SIZE / (BATCH_PER_DEVICE * NUM_DEVICES)))
 
-# If your dataset is mixed with images and videos, you need to use zero2.
+# NOTE Direct Training with QA samples
+
+# remember use Zero-3 to training
+
 deepspeed src/training/train.py \
     --use_liger False \
     --deepspeed scripts/zero3.json \
     --model_id $MODEL_NAME \
-    --data_path /root/Open-R1-Video-V1/data/LLaVA-Video-0_30_s_youtube_mc-qwen_filter_2k.json \
-    --image_folder /mnt/bn/multimodal-datasets-hl/wangxd/data/LLaVA-Video-178K/0_30_s_youtube_v0_1/liwei_youtube_videos/ \
+    --data_path /root/Open-R1-Video-V1/data/LLaVA-Video-2_3_m_youtube_mc-qwen_filter_1_QA.json \
+    --image_folder /mnt/bn/multimodal-datasets-hl/wangxd/data/LLaVA-Video-178K/2_3_m_youtube_v0_1/liwei_youtube_videos/ \
     --remove_unused_columns False \
     --freeze_vision_tower True \
     --freeze_llm False \
@@ -35,7 +35,7 @@ deepspeed src/training/train.py \
     --fp16 False \
     --disable_flash_attn2 False \
     --output_dir /mnt/bn/multimodal-datasets-hl/wangxd/ckpt/${WANDB_PROJECT}/${WANDB_NAME} \
-    --num_train_epochs 3 \
+    --num_train_epochs 2 \
     --per_device_train_batch_size $BATCH_PER_DEVICE \
     --gradient_accumulation_steps $GRAD_ACCUM_STEPS \
     --video_max_pixels $((360 * 420)) \
