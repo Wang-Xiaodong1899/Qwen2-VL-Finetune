@@ -114,6 +114,10 @@ class DPOArguments(DPOConfigTRL):
         default="sigmoid",
         metadata={"help": "The type of DPO loss to use."}
     )
+    loss_type:str = field(
+        default="sigmoid",
+        metadata={"help": "The type of DPO loss to use."}
+    )
 
 
 @dataclass
