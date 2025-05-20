@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export WANDB_PROJECT=Qwen2.5-VL-7B-Video-DPO
-export WANDB_NAME=hound-17k-first-round-5e-7
+export WANDB_NAME=Qwen2.5-VL-7B_sdf_17k_DPO-5e-7
 
 
 # You can use 2B instead of 7B
@@ -24,7 +24,7 @@ deepspeed src/train/train_dpo.py \
     --use_liger False \
     --deepspeed scripts/zero3_offload.json \
     --model_id $MODEL_NAME \
-    --data_path /root/Open-R1-Video-V1/Qwen2-VL-Finetune/scripts/qwen-hound-17k-0518-video.json \
+    --data_path /root/Open-R1-Video-V1/Qwen2-VL-Finetune/scripts/sft_dpo_17k_add_videotok.json \
     --image_folder /mnt/bn/multimodal-datasets-hl/wangxd/data/shareVideoGPTV/dpo_train_data \
     --remove_unused_columns False \
     --freeze_vision_tower True \

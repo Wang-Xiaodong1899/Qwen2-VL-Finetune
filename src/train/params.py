@@ -132,3 +132,5 @@ class DataArguments:
     video_resized_width: int = field(default=None)
     video_resized_height: int = field(default=None)
     fps: float = 1.0
+    video_max_frames: Optional[int] = field(default=768)
+    video_min_frames: Optional[int] = field(default=16)
