@@ -348,6 +348,9 @@ class DPODataset4Frames(Dataset):
         all_image_grid_thw = []
         all_second_gird = []
 
+        all_chosen_scores = []
+        all_rejected_scores = []
+
         if len(SYSTEM_MESSAGE) > 0 and "Qwen3" not in self.model_id:
             system_message = f"{DEFAULT_IM_START_TOKEN}system\n{SYSTEM_MESSAGE}{DEFAULT_IM_END_TOKEN}\n"
             system_message_input_ids = processor.tokenizer(system_message, add_special_tokens=False, return_tensors='pt')['input_ids'] 
@@ -357,6 +360,8 @@ class DPODataset4Frames(Dataset):
         user_prompt = replace_image_tokens(sources["prompt"], is_video=is_video)
         chosen_response = sources["chosen"]
         rejected_response = sources["rejected"]
+        chosen_score = sources["chosen_score"]
+        rejected_score = sources["rejected_score"]
 
         user_input = f"{DEFAULT_IM_START_TOKEN}user\n{user_prompt}{DEFAULT_IM_END_TOKEN}\n{DEFAULT_IM_START_TOKEN}assistant\n"
         chosen_response = f"{chosen_response}{DEFAULT_IM_END_TOKEN}\n"
@@ -421,15 +426,23 @@ class DPODataset4Frames(Dataset):
         all_input_ids.append(input_ids)
         all_chosen.append(chosen_input_ids)
         all_rejected.append(rejected_input_ids)
+        all_chosen_scores.append(chosen_score)
+        all_rejected_scores.append(rejected_score)
 
         input_ids = torch.cat(all_input_ids, dim=0).to(torch.long)
         chosen = torch.cat(all_chosen, dim=0).to(torch.long)
         rejected = torch.cat(all_rejected, dim=0).to(torch.long)
+
+        # todo add chosen_score, rejected_score
+        all_chosen_scores = torch.tensor(all_chosen_scores, dtype=torch.float32)
+        all_rejected_scores = torch.tensor(all_rejected_scores, dtype=torch.float32)
         
         data_dict = dict(
             prompt_input_ids=input_ids,
             chosen_input_ids=chosen,
             rejected_input_ids=rejected,
+            chosen_score=all_chosen_scores,
+            rejected_score=all_rejected_scores,
         )
 
         if pixel_key and grid_key:
@@ -461,6 +474,8 @@ class DataCollatorForDPODataset(object):
         batch_video_thw = []
         batch_image_thw = []
         batch_second_per_grid_ts = []
+        batch_chosen_scores = []
+        batch_rejected_scores = []
 
         for example in examples:
             keys = example.keys()
@@ -474,6 +489,9 @@ class DataCollatorForDPODataset(object):
             batch_input_ids.append(example["prompt_input_ids"])
             batch_chosen_ids.append(example["chosen_input_ids"])
             batch_rejected_ids.append(example["rejected_input_ids"])
+
+            batch_chosen_scores.append(example["chosen_score"])
+            batch_rejected_scores.append(example["rejected_score"])
 
             if "second_per_grid_ts" in keys:
                 batch_second_per_grid_ts.extend(example["second_per_grid_ts"])
@@ -498,6 +516,8 @@ class DataCollatorForDPODataset(object):
             'rejected_input_ids': rejected,
             'rejected_attention_mask': rejected_attention_mask,
         }
+        data_dict["chosen_score"] = torch.tensor(batch_chosen_scores, dtype=torch.float32)
+        data_dict["rejected_score"] = torch.tensor(batch_rejected_scores, dtype=torch.float32)
 
         if len(batch_pixel_values) > 0:
             pixel_values = torch.cat(batch_pixel_values, dim=0)
