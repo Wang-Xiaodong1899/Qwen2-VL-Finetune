@@ -124,6 +124,43 @@ def get_video_info(video_path, min_pixels, max_pixels, width, height, fps, image
 
     return video_input[0], video_kwargs
 
+import os
+def get_video_list_info(video_path, min_pixels, max_pixels, width, height, fps, image_patch_size, return_video_metadata=False):
+    # Using this because of process_vision_info function
+    # Need to fix this in the future
+    video_dir = video_path
+    video_frames = os.listdir(video_dir)
+    # sort
+    video_frames.sort()
+    video_frames = [os.path.join(video_dir, frame) for frame in video_frames]
+    content = {
+        "type": "video", 
+        "video": video_frames,
+        "min_pixels": min_pixels,
+        "max_pixels": max_pixels,
+        "fps": fps
+    }
+
+    if width is not None and height is not None:
+        content["resized_width"] = width
+        content["resized_height"] = height
+    
+    messages = [
+        {
+            "role": "user", 
+            "content": [content]
+        }
+    ]
+
+    _, video_input, video_kwargs = process_vision_info(
+        messages, 
+        return_video_kwargs=True, 
+        image_patch_size=image_patch_size, 
+        return_video_metadata=return_video_metadata
+    )
+
+    return video_input[0], video_kwargs
+
 def samples_per_class_from_ids(label_ids, num_classes):
     
     counts = torch.bincount(

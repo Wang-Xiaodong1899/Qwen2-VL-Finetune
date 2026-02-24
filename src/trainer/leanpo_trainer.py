@@ -8,7 +8,8 @@ from transformers.trainer import (
     TRAINER_STATE_NAME,
     PREFIX_CHECKPOINT_DIR,
 )
-from trl import DPOTrainer
+# from trl import DPOTrainer
+from trl.trainer.leanpo_trainer import LeanPOTrainer
 from trl.trainer.utils import pad_to_length, flush_left, selective_log_softmax
 from train.train_utils import get_peft_state_non_lora_maybe_zero_3
 
@@ -26,10 +27,10 @@ def maybe_zero_3(param, ignore_status=False, name=None):
         param = param.detach().cpu().clone()
     return param
 
-class QwenDPOTrainer(DPOTrainer):
+class QwenLeanPOTrainer(LeanPOTrainer):
 
     def __init__(self, processing_class, *args, **kwargs):
-        super(QwenDPOTrainer, self).__init__(processing_class=processing_class, *args, **kwargs)
+        super(QwenLeanPOTrainer, self).__init__(processing_class=processing_class, *args, **kwargs)
         self.processor = processing_class
 
     def _prepare_dataset(
@@ -169,14 +170,19 @@ class QwenDPOTrainer(DPOTrainer):
             output["nll_loss"] = F.cross_entropy(
                 torch.flatten(chosen_logits, end_dim=1), torch.flatten(chosen_labels, end_dim=1), ignore_index=0
             )
-
-        if self.loss_type == "ipo":
+        # print(f"***********loss_type: {self.loss_type}************")
+        # print(f"all_logps: {all_logps}, loss_mask: {loss_mask.sum(-1)}")
+        if self.loss_type == "ipo" or self.loss_type == "simpo" or "simpo" in self.loss_type:
+            # print(f"divided all_logps: {all_logps}, loss_mask: {loss_mask.sum(-1)}")
             all_logps = all_logps / loss_mask.sum(-1)
+            
 
         output["chosen_logps"] = all_logps[:num_examples]
         output["rejected_logps"] = all_logps[num_examples:]
         output["mean_chosen_logits"] = logits[:num_examples][loss_mask[:num_examples]].mean()
         output["mean_rejected_logits"] = logits[num_examples:][loss_mask[num_examples:]].mean()
+        # print(f"chosen_logps: {output['chosen_logps']}")
+        # print(f"rejected_logps: {output['rejected_logps']}")
 
         if self.aux_loss_enabled:
             output["aux_loss"] = outputs.aux_loss
@@ -222,4 +228,4 @@ class QwenDPOTrainer(DPOTrainer):
                 self._rotate_checkpoints(use_mtime=False, output_dir=run_dir)
 
         else:
-            super(QwenDPOTrainer, self)._save_checkpoint(model, trial)
+            super(QwenLeanPOTrainer, self)._save_checkpoint(model, trial)

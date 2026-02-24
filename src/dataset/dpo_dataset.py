@@ -14,7 +14,7 @@ from src.constants import (
     SYSTEM_MESSAGE,
 )
 
-from .data_utils import get_image_info, get_video_info, pad_sequence, replace_image_tokens
+from .data_utils import get_image_info, get_video_info, pad_sequence, replace_image_tokens, get_video_list_info
 
 
 class DPODataset(Dataset):
@@ -229,7 +229,223 @@ class DPODataset(Dataset):
             data_dict["second_per_grid_ts"] = second_gird
 
         return data_dict
+
+
+class DPODataset4Frames(Dataset):
+    """Dataset for DPO training"""
+
+    def __init__(
+        self,
+        data_path: str | list,
+        processor: transformers.ProcessorMixin,
+        data_args: DataArguments,
+        model_id,
+        padding=True,
+    ):
+        super(DPODataset4Frames, self).__init__()
+        if isinstance(data_path, str):
+            list_data_dict = json.load(open(data_path, "r"))
+        else:
+            list_data_dict = data_path
+
+        self.model_id = model_id
+        self.processor = processor
+        self.list_data_dict = list_data_dict
+        self.data_args = data_args
+        self.padding = padding
+        self.image_min_pixel = data_args.image_min_pixels
+        self.image_max_pixel = data_args.image_max_pixels
+        self.video_min_pixel = data_args.video_min_pixels
+        self.video_max_pixel = data_args.video_max_pixels
+        self.image_resized_w = data_args.image_resized_width
+        self.image_resized_h = data_args.image_resized_height
+        self.video_resized_w = data_args.video_resized_width
+        self.video_resized_h = data_args.video_resized_height
+        self.fps = data_args.fps
+        self.nframes = data_args.nframes
+
+        if "Qwen3" in self.model_id:
+            self.image_patch_size = 16
+            self.return_video_metadata = True
+        else:
+            self.image_patch_size = 14
+            self.return_video_metadata = False
+
+    def __len__(self):
+        return len(self.list_data_dict)
     
+    def __getitem__(self, i) -> Dict[str, torch.Tensor]:
+        sources = self.list_data_dict[i]
+
+        is_video = False
+        processor = self.processor
+
+        if "image" in sources:
+            videos = None
+            grid_key = "image_grid_thw"
+            pixel_key = "pixel_values"
+            
+            image_files = sources["image"]
+            image_folder = self.data_args.image_folder
+
+            if isinstance(image_files, str):
+                image_files = [image_files]
+
+            images = []
+            
+            for image_file in image_files:
+                if not os.path.exists(image_file):
+                    if not image_file.startswith("http"):
+                        image_file = os.path.join(image_folder, image_file)
+                image_input = get_image_info(
+                        image_file, 
+                        self.image_min_pixel, 
+                        self.image_max_pixel, 
+                        self.image_resized_w, 
+                        self.image_resized_h, 
+                        self.image_patch_size
+                    )
+                images.append(image_input)
+
+        elif "video" in sources:
+            is_video = True
+            images=None
+            grid_key = "video_grid_thw"
+            pixel_key = "pixel_values_videos"
+
+            video_files = sources["video"]
+            video_folder = self.data_args.image_folder
+
+            if isinstance(video_files, str):
+                video_files = [video_files]
+
+            videos = []
+            for video_file in video_files:
+                if not os.path.exists(video_file):
+                    if not video_file.startswith("http"):
+                        video_file = os.path.join(video_folder, video_file)
+                video_input, video_kwargs = get_video_list_info(
+                    video_file, 
+                    self.video_min_pixel, 
+                    self.video_max_pixel, 
+                    self.video_resized_w, 
+                    self.video_resized_h, 
+                    self.data_args.fps,
+                    self.image_patch_size,
+                    return_video_metadata=self.return_video_metadata
+                )
+                videos.append(video_input)
+        else:
+            grid_key = None
+            pixel_key = None
+            images=None
+            videos=None
+
+        all_input_ids = [] 
+        all_rejected = []
+        all_chosen =[]
+        all_pixel_values = []
+        all_image_grid_thw = []
+        all_second_gird = []
+
+        if len(SYSTEM_MESSAGE) > 0 and "Qwen3" not in self.model_id:
+            system_message = f"{DEFAULT_IM_START_TOKEN}system\n{SYSTEM_MESSAGE}{DEFAULT_IM_END_TOKEN}\n"
+            system_message_input_ids = processor.tokenizer(system_message, add_special_tokens=False, return_tensors='pt')['input_ids'] 
+            
+            all_input_ids.append(system_message_input_ids.squeeze(0))
+
+        user_prompt = replace_image_tokens(sources["prompt"], is_video=is_video)
+        chosen_response = sources["chosen"]
+        rejected_response = sources["rejected"]
+
+        user_input = f"{DEFAULT_IM_START_TOKEN}user\n{user_prompt}{DEFAULT_IM_END_TOKEN}\n{DEFAULT_IM_START_TOKEN}assistant\n"
+        chosen_response = f"{chosen_response}{DEFAULT_IM_END_TOKEN}\n"
+        rejected_response = f"{rejected_response}{DEFAULT_IM_END_TOKEN}\n"
+
+        if DEFAULT_IMAGE_TOKEN in user_input:
+            inputs = processor(text=[user_input], images=images, videos=videos, padding=False, do_resize=False, return_tensors='pt')
+            prompt_input_ids = inputs['input_ids']
+            all_pixel_values.append(inputs[pixel_key])
+            all_image_grid_thw.append(inputs[grid_key])
+        elif DEFAULT_VIDEO_TOKEN in user_input:
+            if "Qwen2.5" in self.model_id:
+                inputs = processor(
+                    text=[user_input], 
+                    images=images, 
+                    videos=videos, 
+                    padding=False, 
+                    do_resize=False, 
+                    return_tensors='pt', 
+                    **video_kwargs
+                )
+                
+                all_second_gird.extend(inputs["second_per_grid_ts"])
+            
+            elif "Qwen3" in self.model_id:
+
+                video_datas, video_metadatas = zip(*videos)
+                video_datas, video_metadatas = list(video_datas), list(video_metadatas)
+                
+                inputs = processor(
+                    text=[user_input], 
+                    images=images, 
+                    videos=video_datas, 
+                    padding=False, 
+                    do_resize=False, 
+                    return_tensors='pt', 
+                    **video_kwargs, 
+                    video_metadata=video_metadatas,
+                )
+            
+            else:
+                inputs = processor(
+                    text=[user_input], 
+                    images=images, 
+                    videos=videos, 
+                    padding=False, 
+                    do_resize=False, 
+                    return_tensors='pt'
+                )
+            
+            prompt_input_ids = inputs['input_ids']
+            all_pixel_values.append(inputs[pixel_key])
+            all_image_grid_thw.append(inputs[grid_key])
+
+        else:
+            prompt_input_ids = processor.tokenizer(user_input, add_special_tokens=False, padding=False, return_tensors='pt')['input_ids']
+
+        input_ids = prompt_input_ids.squeeze(0)
+        chosen_input_ids = processor.tokenizer(chosen_response, add_special_tokens=False, padding=False, return_tensors='pt')['input_ids'].squeeze(0)
+        rejected_input_ids = processor.tokenizer(rejected_response, add_special_tokens=False, padding=False, return_tensors='pt')['input_ids'].squeeze(0)
+
+        all_input_ids.append(input_ids)
+        all_chosen.append(chosen_input_ids)
+        all_rejected.append(rejected_input_ids)
+
+        input_ids = torch.cat(all_input_ids, dim=0).to(torch.long)
+        chosen = torch.cat(all_chosen, dim=0).to(torch.long)
+        rejected = torch.cat(all_rejected, dim=0).to(torch.long)
+        
+        data_dict = dict(
+            prompt_input_ids=input_ids,
+            chosen_input_ids=chosen,
+            rejected_input_ids=rejected,
+        )
+
+        if pixel_key and grid_key:
+            pixel_values = torch.cat(all_pixel_values, dim=0)
+            image_thw = torch.cat(all_image_grid_thw, dim=0)
+            data_dict[pixel_key] = pixel_values
+            data_dict[grid_key] = image_thw
+        
+        if len(all_second_gird) > 0:
+            second_gird = all_second_gird
+            data_dict["second_per_grid_ts"] = second_gird
+
+        return data_dict
+
+
+
 class DataCollatorForDPODataset(object):
     """Collate examples for DPO fine-tuning."""
 
@@ -302,7 +518,12 @@ class DataCollatorForDPODataset(object):
     
 def make_dpo_data_module(model_id, processor, data_args):
     """Make dataset and collator for DPO fine-tuning."""
-    dpo_dataset = DPODataset(
+    # for video input
+    # dpo_dataset = DPODataset(
+    #     data_path=data_args.data_path, processor=processor, data_args=data_args, model_id=model_id
+    # )
+    # for video frames input
+    dpo_dataset = DPODataset4Frames(
         data_path=data_args.data_path, processor=processor, data_args=data_args, model_id=model_id
     )
     data_collator = DataCollatorForDPODataset(pad_token_id=processor.tokenizer.pad_token_id)
