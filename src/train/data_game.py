@@ -126,6 +126,8 @@ def get_frame_list_info(frame_list, min_pixels, max_pixels, width, height, fps, 
         content["resized_width"] = width
         content["resized_height"] = height
     
+    # NOTE ? width, height
+    
     messages = [
         {"role": "user", 
          "content": [content]
@@ -362,7 +364,7 @@ class SupervisedFramesDataset(Dataset):
         model_id,
         padding=True,
     ):
-        super(SupervisedDataset, self).__init__()
+        super(SupervisedFramesDataset, self).__init__()
         if isinstance(data_path, str):
             list_data_dict = json.load(open(data_path, "r"))
         else:
@@ -420,6 +422,7 @@ class SupervisedFramesDataset(Dataset):
             pixel_key = "pixel_values_videos"
 
             video_files = sources["video"]
+            video_id = sources["id"]
             # video_folder = self.data_args.image_folder
 
             # TODO if video is a list a image https path
@@ -427,10 +430,10 @@ class SupervisedFramesDataset(Dataset):
             prefix = "http://[fdbd:dc02:108:463:8b00::8b]:62331/video/"
             video_files = [prefix+video_id+"/images/"+im for im in video_files]
 
-            frames = sample_elements(video_files, 48)
+            frames = sample_elements(video_files, 64)
 
             videos = []
-            video_input, video_kwargs = get_frame_list_info(frames, self.video_min_pixel, self.video_max_pixel, self.video_resized_w, self.video_resized_h, self.data_args.fps)
+            video_input, video_kwargs = get_frame_list_info(frames, self.video_min_pixel, self.video_max_pixel, self.video_resized_w, self.video_resized_h, self.data_args.fps, self.video_max_frames, self.video_min_frames)
             videos.append(video_input)
             # for video_file in video_files:
             #     if not os.path.exists(video_file):
@@ -1001,7 +1004,7 @@ def llava_to_openai(conversations, is_video=False):
 
 def make_supervised_data_module(model_id, processor, data_args):
     """Make dataset and collator for supervised fine-tuning."""
-    sft_dataset = SupervisedDataset(
+    sft_dataset = SupervisedFramesDataset(
         data_path=data_args.data_path, processor=processor, data_args=data_args, model_id=model_id
     )
     data_collator = DataCollatorForSupervisedDataset(pad_token_id=processor.tokenizer.pad_token_id)

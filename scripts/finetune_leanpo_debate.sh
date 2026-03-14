@@ -1,8 +1,9 @@
 #!/bin/bash
 
 export WANDB_PROJECT=Qwen2.5-VL-7B-Video-LeanPO
-export WANDB_NAME=hound-17k-debate-5e-7
+export WANDB_NAME=hound-17k-debate-5e-7-total-ep2-trail2
 
+# DECORD_EOF_RETRY_MAX=40960 FPS_MAX_FRAMES=32 CUDA_VISIBLE_DEVICES=0 bash eval/eval_video_mme.sh /mnt/bn/multimodal-datasets-hl/wangxd/ckpt/Qwen2-VL-7B_ins-Video-LeanPO/hound-17k-debate-5e-7/ Qwen2-VL-7B-Ins-LeanPO-debate-half-32-short 32 short True
 
 # You can use 2B instead of 7B
 # MODEL_NAME="Qwen/Qwen2-VL-7B-Instruct"
@@ -19,13 +20,13 @@ export PYTHONPATH=src:$PYTHONPATH
 
 deepspeed src/train/train_leanpo.py \
     --loss_type "simpo" \
-    --label_smoothing 0.2 \
-    --beta 2.0 --rpo_alpha 0.5 \
+    --label_smoothing 0.1 \
+    --beta 1.0 --rpo_alpha 0.0 \
     --precompute_ref_log_probs False \
     --use_liger False \
     --deepspeed scripts/zero3_offload.json \
     --model_id $MODEL_NAME \
-    --data_path /root/Open-R1-Video-V1/Qwen2-VL-Finetune/scripts/qwen-hound-17k-0520_xxx_merge-rej-add_videotok-8k.json \
+    --data_path /root/Open-R1-Video-V1/Qwen2-VL-Finetune/scripts/qwen-hound-17k-0520_total_merge-rej-add_videotok-17k.json \
     --image_folder /mnt/bn/multimodal-datasets-hl/wangxd/data/shareVideoGPTV/dpo_train_data \
     --remove_unused_columns False \
     --freeze_vision_tower True \
@@ -35,7 +36,7 @@ deepspeed src/train/train_leanpo.py \
     --fp16 False \
     --disable_flash_attn2 False \
     --output_dir /mnt/bn/multimodal-datasets-hl/wangxd/ckpt/${WANDB_PROJECT}/${WANDB_NAME} \
-    --num_train_epochs 1 \
+    --num_train_epochs 2 \
     --per_device_train_batch_size $BATCH_PER_DEVICE \
     --gradient_accumulation_steps $GRAD_ACCUM_STEPS \
     --image_min_pixels $((128 * 28 * 28)) \
@@ -49,7 +50,7 @@ deepspeed src/train/train_leanpo.py \
     --vision_lr 5e-7 \
     --weight_decay 0.1 \
     --warmup_ratio 0.03 \
-    --lr_scheduler_type "cosine" \
+    --lr_scheduler_type "linear" \
     --logging_steps 1 \
     --tf32 True \
     --gradient_checkpointing True \
@@ -57,5 +58,5 @@ deepspeed src/train/train_leanpo.py \
     --lazy_preprocess True \
     --save_strategy "steps" \
     --save_steps 1000 \
-    --save_total_limit 1 \
+    --save_total_limit 3 \
     --dataloader_num_workers 4

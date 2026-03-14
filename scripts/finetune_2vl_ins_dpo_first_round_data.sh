@@ -9,7 +9,7 @@ export WANDB_NAME=Qwen2-VL-Ins-7B_sdf_17k_DPO-5e-7
 # MODEL_NAME="Qwen/Qwen2-VL-2B-Instruct"
 # MODEL_NAME="Qwen/Qwen2.5-VL-3B-Instruct"
 # MODEL_NAME="/mnt/bn/multimodal-datasets-hl/wangxd/models/Qwen2.5-VL-7B-Instruct/"
-MODEL_NAME="/mnt/bn/ws-candy-hl-62827-yz89lqpbo2/models/Qwen2-VL-7B-Instruct"
+MODEL_NAME="/mnt/bn/wxd-video-understanding/wangxd/models/Qwen2-VL-7B-Instruct"
 
 
 GLOBAL_BATCH_SIZE=8

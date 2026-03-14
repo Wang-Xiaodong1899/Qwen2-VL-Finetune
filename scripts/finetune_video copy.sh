@@ -10,7 +10,7 @@ export FPS_MAX_FRAMES=64
 # You can use 2B instead of 7B
 # MODEL_NAME="Qwen/Qwen2-VL-7B-Instruct"
 # MODEL_NAME="Qwen/Qwen2-VL-2B-Instruct"
-MODEL_NAME="/mnt/bn/ws-candy-hl-62827-yz89lqpbo2/models/Qwen2-VL-7B-Instruct"
+MODEL_NAME="/mnt/bn/wxd-video-understanding/wangxd/models/Qwen2-VL-7B-Instruct"
 # MODEL_NAME="Qwen/Qwen2.5-VL-7B-Instruct"
 
 export PYTHONPATH=src:$PYTHONPATH

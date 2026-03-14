@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.append("/root/Open-R1-Video-V1/")
+
 from dataclasses import dataclass, field
 from typing import Optional
 

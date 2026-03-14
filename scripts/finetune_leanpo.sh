@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export WANDB_PROJECT=Qwen2.5-VL-7B-Video-LeanPO
-export WANDB_NAME=hound-17k-first-round-5e-7
+export WANDB_NAME=hound-17k-first-round-5e-7-ep2
 
 
 # You can use 2B instead of 7B
@@ -19,7 +19,7 @@ export PYTHONPATH=src:$PYTHONPATH
 
 deepspeed src/train/train_leanpo.py \
     --loss_type "simpo" \
-    --label_smoothing 0.2 \
+    --label_smoothing 0.1 \
     --beta 2.0 --rpo_alpha 0.5 \
     --precompute_ref_log_probs False \
     --use_liger False \
@@ -35,7 +35,7 @@ deepspeed src/train/train_leanpo.py \
     --fp16 False \
     --disable_flash_attn2 False \
     --output_dir /mnt/bn/multimodal-datasets-hl/wangxd/ckpt/${WANDB_PROJECT}/${WANDB_NAME} \
-    --num_train_epochs 1 \
+    --num_train_epochs 2 \
     --per_device_train_batch_size $BATCH_PER_DEVICE \
     --gradient_accumulation_steps $GRAD_ACCUM_STEPS \
     --image_min_pixels $((128 * 28 * 28)) \
