@@ -15,8 +15,8 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
 )
 from transformers.models.qwen3_vl.modeling_qwen3_vl import (
     Qwen3VLPreTrainedModel,
-    Qwen3VLModel
 )
+from model.qwen3_vl_vjepa_deepstack import Qwen3VLModelWithVJEPADeepstack
 from transformers.models.qwen3_5.modeling_qwen3_5 import (
     Qwen3_5PreTrainedModel,
     Qwen3_5Model,
@@ -417,7 +417,7 @@ class Qwen3VLForSequenceClassification(Qwen3VLPreTrainedModel):
         self.num_labels = config.num_labels
         bridge_h = config.mlp_head_hidden_dim
         bridge_p = config.mlp_head_dropout
-        self.model = Qwen3VLModel(config)
+        self.model = Qwen3VLModelWithVJEPADeepstack(config)
         hidden_size = config.text_config.hidden_size
         
         self.bridge = None
