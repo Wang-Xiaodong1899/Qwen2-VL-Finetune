@@ -294,8 +294,22 @@ class DataArguments:
     image_resized_height: int = field(default=None)
     video_resized_width: int = field(default=None)
     video_resized_height: int = field(default=None)
-    fps: Optional[int] = field(default=None, metadata={"help": "Frames per second for video data."})
+    fps: Optional[int] = field(default=1, metadata={"help": "Frames per second for video data."})
     nframes: Optional[int] = field(default=None, metadata={"help": "Number of frames for video data."})
+
+    vjepa2_model_id: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional VJEPA2 model id (e.g. vjepa2-vitg-fpc64-384) used to extract video features and inject into Qwen3-VL deepstack."},
+    )
+    vjepa2_num_frames: int = field(
+        default=64,
+        metadata={"help": "Number of frames sampled per video for VJEPA2 feature extraction."},
+    )
+    vjepa2_frame_stride: int = field(
+        default=2,
+        metadata={"help": "Stride between sampled frames for VJEPA2 feature extraction."},
+    )
+
     enable_reasoning: bool = field(
         default=False,
         metadata={"help": "Enable reasoning-field parsing and model-specific <think> prompt formatting when supported."},

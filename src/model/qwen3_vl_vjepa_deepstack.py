@@ -64,20 +64,21 @@ class Qwen3VLTextModelWithVJEPADeepstack(Qwen3VLTextModel):
         local_this = hidden_states[visual_pos_masks, :] + visual_embeds
 
         vjepa_visual_embeds = self._vjepa_visual_embeds
-        if vjepa_visual_embeds is not None:
+        if vjepa_visual_embeds is not None and bool(visual_pos_masks.any().item()):
             vjepa_visual_embeds = vjepa_visual_embeds.to(hidden_states.device, hidden_states.dtype)
             vjepa_visual_embeds = self._align_vjepa_visual_embeds(vjepa_visual_embeds, visual_pos_masks)
 
-            if self.vjepa_zero_proj is None or self.vjepa_zero_proj.in_features != vjepa_visual_embeds.size(-1):
-                self.vjepa_zero_proj = nn.Linear(
-                    vjepa_visual_embeds.size(-1),
-                    self.config.hidden_size,
-                    bias=True,
-                ).to(hidden_states.device, hidden_states.dtype)
-                nn.init.zeros_(self.vjepa_zero_proj.weight)
-                nn.init.zeros_(self.vjepa_zero_proj.bias)
-
+            if self.vjepa_zero_proj is None:
+                raise RuntimeError(
+                    "vjepa_zero_proj is not initialized. Initialize it before training (e.g., in train_sft.py) to avoid creating new modules during forward under DeepSpeed ZeRO-3."
+                )
+            if self.vjepa_zero_proj.in_features != vjepa_visual_embeds.size(-1):
+                raise RuntimeError(
+                    f"vjepa_zero_proj.in_features={self.vjepa_zero_proj.in_features} does not match vjepa_visual_embeds dim={vjepa_visual_embeds.size(-1)}"
+                )
+            print(f"before proj: {vjepa_visual_embeds.shape}")
             local_this = local_this + self.vjepa_zero_proj(vjepa_visual_embeds)
+            print(f"after proj: {local_this.shape}")
 
         hidden_states[visual_pos_masks, :] = local_this
         return hidden_states

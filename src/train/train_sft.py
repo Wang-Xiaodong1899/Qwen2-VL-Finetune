@@ -134,6 +134,35 @@ def train():
         attn_implementation="sdpa" if training_args.disable_flash_attn2 else "flash_attention_2",
         **bnb_model_from_pretrained_args,
     )
+
+    if getattr(data_args, "vjepa2_model_id", None) is not None and model.config.model_type == "qwen3_vl":
+        from model.qwen3_vl_vjepa_deepstack import Qwen3VLTextModelWithVJEPADeepstack
+        from transformers import AutoConfig
+        import torch.nn as nn
+
+        backbone = get_qwen_vl_generation_backbone(model)
+        if not isinstance(backbone.language_model, Qwen3VLTextModelWithVJEPADeepstack):
+            backbone.language_model.__class__ = Qwen3VLTextModelWithVJEPADeepstack
+            backbone.language_model._vjepa_visual_embeds = None
+
+        # Pre-create VJEPA2 -> Qwen3 hidden projection to avoid creating submodules during forward (ZeRO-3 safe)
+        if getattr(backbone.language_model, "vjepa_zero_proj", None) is None:
+            vjepa_cfg = AutoConfig.from_pretrained(getattr(data_args, "vjepa2_model_id"))
+            vjepa_hidden = getattr(vjepa_cfg, "hidden_size", None)
+            if vjepa_hidden is None:
+                raise ValueError(f"Cannot infer VJEPA2 hidden_size from config: {type(vjepa_cfg)!r}")
+
+            proj = nn.Linear(
+                int(vjepa_hidden),
+                int(backbone.language_model.config.hidden_size),
+                bias=True,
+            )
+            nn.init.zeros_(proj.weight)
+            nn.init.zeros_(proj.bias)
+
+            ref_param = next(backbone.language_model.parameters())
+            backbone.language_model.vjepa_zero_proj = proj.to(device=ref_param.device, dtype=ref_param.dtype)
+
     if training_args.use_liger_kernel and model.config.model_type in {"qwen3_5", "qwen3_5_moe"}:
         rank0_print(f"Disabling Liger kernel for unsupported model_type: {model.config.model_type}")
         training_args.use_liger_kernel = False
@@ -222,7 +251,8 @@ def train():
         model=model,
         processing_class=processor,
         args=training_args,
-        **data_module
+        data_args=data_args,
+        **data_module,
     )
 
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):

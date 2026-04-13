@@ -1,8 +1,11 @@
 import os
 import torch
 import torch.nn as nn
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Union, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from params import DataArguments
 
 from transformers import Trainer, GenerationConfig
 from transformers.trainer import (
@@ -50,9 +53,148 @@ class GenerativeEvalPrediction:
 class QwenSFTTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
+        self.data_args: "DataArguments | None" = kwargs.pop("data_args", None)
         super(QwenSFTTrainer, self).__init__(*args, **kwargs)
-        # processing_class is set by parent Trainer from the constructor argument
-        # We can access it via self.processing_class (same as processor)
+        self._vjepa2_model = None
+        self._vjepa2_processor = None
+        self._vjepa2_device = None
+        self._vjepa2_dtype = None
+
+    def _vjepa2_enabled(self) -> bool:
+        return self.data_args is not None and getattr(self.data_args, "vjepa2_model_id", None) is not None
+
+    def _get_vjepa2(self, device: torch.device):
+        if not self._vjepa2_enabled():
+            return None, None
+
+        model_id = getattr(self.data_args, "vjepa2_model_id")
+        dtype = (
+            torch.bfloat16
+            if getattr(self.args, "bf16", False)
+            else (torch.float16 if getattr(self.args, "fp16", False) else torch.float32)
+        )
+
+        if self._vjepa2_model is None or self._vjepa2_device != device or self._vjepa2_dtype != dtype:
+            from transformers import AutoVideoProcessor, AutoModel
+
+            self._vjepa2_processor = AutoVideoProcessor.from_pretrained(model_id)
+
+            try:
+                from transformers.integrations import deepspeed as hf_deepspeed
+
+                old_ref = getattr(hf_deepspeed, "_hf_deepspeed_config_weak_ref", None)
+                hf_deepspeed.unset_hf_deepspeed_config()
+                try:
+                    self._vjepa2_model = AutoModel.from_pretrained(model_id, torch_dtype=dtype)
+                finally:
+                    hf_deepspeed._hf_deepspeed_config_weak_ref = old_ref
+            except Exception:
+                self._vjepa2_model = AutoModel.from_pretrained(model_id, torch_dtype=dtype)
+
+            self._vjepa2_model.requires_grad_(False)
+            self._vjepa2_model.eval()
+            self._vjepa2_model.to(device=device)
+
+            self._vjepa2_device = device
+            self._vjepa2_dtype = dtype
+
+        return self._vjepa2_model, self._vjepa2_processor
+
+    def _load_video_for_vjepa2(self, video_path: str) -> torch.Tensor:
+        import numpy as np
+        # from decord import VideoReader
+
+        # vr = VideoReader(video_path)
+        # num_frames = int(getattr(self.data_args, "vjepa2_num_frames", 64))
+        # stride = int(getattr(self.data_args, "vjepa2_frame_stride", 2))
+
+        # idx = np.arange(0, num_frames * stride, stride, dtype=np.int64)
+        # max_idx = max(len(vr) - 1, 0)
+        # idx = np.clip(idx, 0, max_idx)
+
+        # video = vr.get_batch(idx).asnumpy()
+        # return torch.from_numpy(video).permute(0, 3, 1, 2)
+        num_frames = int(getattr(self.data_args, "vjepa2_num_frames", 64))
+        stride = int(getattr(self.data_args, "vjepa2_frame_stride", 2))
+        from torchcodec.decoders import VideoDecoder
+        TORCHCODEC_NUM_THREADS = int(os.environ.get('TORCHCODEC_NUM_THREADS', 8))
+        decoder = VideoDecoder(video_path, num_ffmpeg_threads=TORCHCODEC_NUM_THREADS)
+        video_fps = decoder.metadata.average_fps
+        total_frames = decoder.metadata.num_frames
+        max_idx = max(total_frames - 1, 0)
+        idx = np.arange(0, num_frames * stride, stride, dtype=np.int64)
+        idx = np.clip(idx, 0, max_idx).tolist()
+        video = decoder.get_frames_at(indices=idx).data
+        return video
+
+    def _compute_vjepa_visual_embeds(self, video_paths_batch, device: torch.device):
+        model, processor = self._get_vjepa2(device)
+        if model is None or processor is None:
+            return None
+
+        feats_per_sample = []
+        with torch.inference_mode():
+            for sample_paths in video_paths_batch:
+                if sample_paths is None:
+                    feats_per_sample.append(None)
+                    continue
+
+                if isinstance(sample_paths, str):
+                    sample_paths = [sample_paths]
+
+                sample_feats = []
+                for p in sample_paths:
+                    try:
+                        video = self._load_video_for_vjepa2(p)
+                    except Exception:
+                        continue
+
+                    x = processor(video, return_tensors="pt")["pixel_values_videos"].to(
+                        device=device, dtype=self._vjepa2_dtype
+                    )
+                    f = model.get_vision_features(x)
+                    sample_feats.append(f)
+
+                if len(sample_feats) == 0:
+                    feats_per_sample.append(None)
+                else:
+                    feats_per_sample.append(torch.cat(sample_feats, dim=1).squeeze(0))
+
+        non_empty = [f for f in feats_per_sample if f is not None and f.numel() > 0]
+        if len(non_empty) == 0:
+            return None
+
+        hidden = non_empty[0].size(-1)
+        max_len = max(int(f.size(0)) for f in non_empty)
+        out = non_empty[0].new_zeros((len(feats_per_sample), max_len, hidden), device=device)
+
+        for i, f in enumerate(feats_per_sample):
+            if f is None or f.numel() == 0:
+                continue
+
+            cur_len = int(f.size(0))
+            if cur_len < max_len:
+                pad = f[-1:].expand(max_len - cur_len, -1)
+                f = torch.cat([f, pad], dim=0)
+
+            out[i] = f
+
+        return out
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        video_paths_batch = inputs.pop("vjepa2_video_paths", None)
+        if video_paths_batch is not None and self._vjepa2_enabled():
+            device = inputs["input_ids"].device
+            vjepa_visual_embeds = self._compute_vjepa_visual_embeds(video_paths_batch, device=device)
+            if vjepa_visual_embeds is not None:
+                inputs["vjepa_visual_embeds"] = vjepa_visual_embeds
+
+        return super().compute_loss(
+            model,
+            inputs,
+            return_outputs=return_outputs,
+            num_items_in_batch=num_items_in_batch,
+        )
 
     def create_optimizer(self):
         """

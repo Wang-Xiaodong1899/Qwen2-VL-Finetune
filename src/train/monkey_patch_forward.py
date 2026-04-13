@@ -70,8 +70,104 @@ def replace_qwen_2_with_mixed_modality_forward():
 def replace_qwen2_5_with_mixed_modality_forward():
     transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLModel.forward = qwen2_5_mixed_modality_forward
 
+def _patch_qwen3_vl_for_conditional_generation_vjepa():
+    import transformers.models.qwen3_vl.modeling_qwen3_vl
+
+    cls = transformers.models.qwen3_vl.modeling_qwen3_vl.Qwen3VLForConditionalGeneration
+
+    if getattr(cls.forward, "_accepts_vjepa_visual_embeds", False):
+        return
+
+    orig_forward = cls.forward
+    orig_prepare = cls.prepare_inputs_for_generation
+
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        labels: torch.LongTensor | None = None,
+        pixel_values: torch.Tensor | None = None,
+        pixel_values_videos: torch.FloatTensor | None = None,
+        image_grid_thw: torch.LongTensor | None = None,
+        video_grid_thw: torch.LongTensor | None = None,
+        mm_token_type_ids: torch.IntTensor | None = None,
+        cache_position: torch.LongTensor | None = None,
+        logits_to_keep: int | torch.Tensor = 0,
+        vjepa_visual_embeds: Optional[torch.Tensor] = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ):
+        if vjepa_visual_embeds is not None:
+            kwargs["vjepa_visual_embeds"] = vjepa_visual_embeds
+        return orig_forward(
+            self,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            labels=labels,
+            pixel_values=pixel_values,
+            pixel_values_videos=pixel_values_videos,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            mm_token_type_ids=mm_token_type_ids,
+            cache_position=cache_position,
+            logits_to_keep=logits_to_keep,
+            **kwargs,
+        )
+
+    def prepare_inputs_for_generation(
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        pixel_values=None,
+        pixel_values_videos=None,
+        image_grid_thw=None,
+        video_grid_thw=None,
+        is_first_iteration=False,
+        vjepa_visual_embeds: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        model_inputs = orig_prepare(
+            self,
+            input_ids,
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            cache_position=cache_position,
+            position_ids=position_ids,
+            use_cache=use_cache,
+            pixel_values=pixel_values,
+            pixel_values_videos=pixel_values_videos,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            is_first_iteration=is_first_iteration,
+            **kwargs,
+        )
+        if vjepa_visual_embeds is not None and is_first_iteration:
+            model_inputs["vjepa_visual_embeds"] = vjepa_visual_embeds
+        else:
+            model_inputs.pop("vjepa_visual_embeds", None)
+        return model_inputs
+
+    forward._accepts_vjepa_visual_embeds = True
+    prepare_inputs_for_generation._accepts_vjepa_visual_embeds = True
+
+    cls.forward = forward
+    cls.prepare_inputs_for_generation = prepare_inputs_for_generation
+
+
 def replace_qwen3_with_mixed_modality_forward():
     transformers.models.qwen3_vl.modeling_qwen3_vl.Qwen3VLModel.forward = qwen3_vl_mixed_modality_forward
+    _patch_qwen3_vl_for_conditional_generation_vjepa()
 
 def replace_qwen3_5_with_mixed_modality_forward():
     transformers.models.qwen3_5.modeling_qwen3_5.Qwen3_5Model.forward = qwen3_5_mixed_modality_forward
@@ -79,8 +175,104 @@ def replace_qwen3_5_with_mixed_modality_forward():
 def replace_qwen3_5_moe_with_mixed_modality_forward():
     transformers.models.qwen3_5_moe.modeling_qwen3_5_moe.Qwen3_5MoeModel.forward = qwen3_5_moe_mixed_modality_forward
 
+def _patch_qwen3_vl_moe_for_conditional_generation_vjepa():
+    import transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe
+
+    cls = transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe.Qwen3VLMoeForConditionalGeneration
+
+    if getattr(cls.forward, "_accepts_vjepa_visual_embeds", False):
+        return
+
+    orig_forward = cls.forward
+    orig_prepare = cls.prepare_inputs_for_generation
+
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        labels: torch.LongTensor | None = None,
+        pixel_values: torch.Tensor | None = None,
+        pixel_values_videos: torch.FloatTensor | None = None,
+        image_grid_thw: torch.LongTensor | None = None,
+        video_grid_thw: torch.LongTensor | None = None,
+        mm_token_type_ids: torch.IntTensor | None = None,
+        cache_position: torch.LongTensor | None = None,
+        logits_to_keep: int | torch.Tensor = 0,
+        vjepa_visual_embeds: Optional[torch.Tensor] = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ):
+        if vjepa_visual_embeds is not None:
+            kwargs["vjepa_visual_embeds"] = vjepa_visual_embeds
+        return orig_forward(
+            self,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            labels=labels,
+            pixel_values=pixel_values,
+            pixel_values_videos=pixel_values_videos,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            mm_token_type_ids=mm_token_type_ids,
+            cache_position=cache_position,
+            logits_to_keep=logits_to_keep,
+            **kwargs,
+        )
+
+    def prepare_inputs_for_generation(
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        pixel_values=None,
+        pixel_values_videos=None,
+        image_grid_thw=None,
+        video_grid_thw=None,
+        is_first_iteration=False,
+        vjepa_visual_embeds: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        model_inputs = orig_prepare(
+            self,
+            input_ids,
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            cache_position=cache_position,
+            position_ids=position_ids,
+            use_cache=use_cache,
+            pixel_values=pixel_values,
+            pixel_values_videos=pixel_values_videos,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            is_first_iteration=is_first_iteration,
+            **kwargs,
+        )
+        if vjepa_visual_embeds is not None and is_first_iteration:
+            model_inputs["vjepa_visual_embeds"] = vjepa_visual_embeds
+        else:
+            model_inputs.pop("vjepa_visual_embeds", None)
+        return model_inputs
+
+    forward._accepts_vjepa_visual_embeds = True
+    prepare_inputs_for_generation._accepts_vjepa_visual_embeds = True
+
+    cls.forward = forward
+    cls.prepare_inputs_for_generation = prepare_inputs_for_generation
+
+
 def replace_qwen3_vl_moe_with_mixed_modality_forward():
     transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe.Qwen3VLMoeModel.forward = qwen3_vl_moe_mixed_modality_forward
+    _patch_qwen3_vl_moe_for_conditional_generation_vjepa()
 
 
 def _qwen3_5_mixed_modality_forward_impl(
@@ -235,6 +427,7 @@ def qwen3_vl_moe_mixed_modality_forward(
     mm_token_type_ids: Optional[torch.IntTensor] = None,
     cache_position: Optional[torch.LongTensor] = None,
     second_per_grid_ts: Optional[torch.Tensor] = None,
+    vjepa_visual_embeds: Optional[torch.Tensor] = None,
     **kwargs: Unpack[TransformersKwargs],
 ) -> Union[tuple, Qwen3VLMoeModelOutputWithPast]:
     
@@ -325,6 +518,7 @@ def qwen3_vl_moe_mixed_modality_forward(
         cache_position=cache_position,
         visual_pos_masks=visual_pos_masks,
         deepstack_visual_embeds=deepstack_visual_embeds,
+        vjepa_visual_embeds=vjepa_visual_embeds,
         **kwargs,
     )
 
@@ -349,6 +543,7 @@ def qwen3_vl_mixed_modality_forward(
     mm_token_type_ids: Optional[torch.IntTensor] = None,
     cache_position: Optional[torch.LongTensor] = None,
     second_per_grid_ts: Optional[torch.Tensor] = None,
+    vjepa_visual_embeds: Optional[torch.Tensor] = None,
     **kwargs: Unpack[TransformersKwargs],
 ) -> Union[tuple, Qwen3VLModelOutputWithPast]:
     r"""
@@ -444,6 +639,7 @@ def qwen3_vl_mixed_modality_forward(
         cache_position=cache_position,
         visual_pos_masks=visual_pos_masks,
         deepstack_visual_embeds=deepstack_visual_embeds,
+        vjepa_visual_embeds=vjepa_visual_embeds,
         **kwargs,
     )
 

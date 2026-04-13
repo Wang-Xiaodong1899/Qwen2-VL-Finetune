@@ -81,6 +81,7 @@ class SupervisedDataset(Dataset):
         sources = self.list_data_dict[i]
 
         is_video = False
+        resolved_video_paths = None
 
         processor = self.processor
         if "image" in sources:
@@ -123,10 +124,12 @@ class SupervisedDataset(Dataset):
                 video_files = [video_files]
 
             videos = []
+            resolved_video_paths = []
             for video_file in video_files:
                 if not os.path.exists(video_file):
                     if not video_file.startswith("http"):
                         video_file = os.path.join(video_folder, video_file)
+                resolved_video_paths.append(video_file)
                 video_input, video_kwargs = get_video_info(
                     video_file, 
                     self.video_min_pixel, 
@@ -299,6 +302,9 @@ class SupervisedDataset(Dataset):
             second_gird = all_second_gird
             data_dict["second_per_grid_ts"] = second_gird
 
+        if getattr(self.data_args, "vjepa2_model_id", None) is not None and resolved_video_paths is not None:
+            data_dict["vjepa2_video_paths"] = resolved_video_paths
+
         return data_dict
 
 class DataCollatorForSupervisedDataset(object):
@@ -316,6 +322,7 @@ class DataCollatorForSupervisedDataset(object):
         batch_image_thw = []
         batch_second_per_grid_ts = []
         batch_mm_token_type_ids = []
+        batch_vjepa2_video_paths = []
 
         for example in examples:
             keys = example.keys()
@@ -332,6 +339,11 @@ class DataCollatorForSupervisedDataset(object):
 
             if "second_per_grid_ts" in keys:
                 batch_second_per_grid_ts.extend(example["second_per_grid_ts"])
+
+            if "vjepa2_video_paths" in keys:
+                batch_vjepa2_video_paths.append(example["vjepa2_video_paths"])
+            else:
+                batch_vjepa2_video_paths.append(None)
 
         input_ids = pad_sequence(
             batch_input_ids, padding_side='right', padding_value=self.pad_token_id
@@ -362,6 +374,9 @@ class DataCollatorForSupervisedDataset(object):
 
         if len(batch_second_per_grid_ts) > 0:
             data_dict["second_per_grid_ts"] = batch_second_per_grid_ts
+
+        if any(v is not None for v in batch_vjepa2_video_paths):
+            data_dict["vjepa2_video_paths"] = batch_vjepa2_video_paths
 
         return data_dict
 

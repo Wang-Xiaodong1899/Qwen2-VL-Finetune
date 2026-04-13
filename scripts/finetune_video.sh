@@ -6,12 +6,12 @@
 # MODEL_NAME="Qwen/Qwen2.5-VL-7B-Instruct"
 # MODEL_NAME="Qwen/Qwen3.5-4B"
 
-MODEL_NAME="Qwen/Qwen3-VL-4B-Instruct"
+MODEL_NAME="/mnt/bn/wxd-video-understanding/wangxd/models/Qwen3-VL-8B-Instruct/"
 
 export PYTHONPATH=src:$PYTHONPATH
 
-GLOBAL_BATCH_SIZE=128
-BATCH_PER_DEVICE=4
+GLOBAL_BATCH_SIZE=8
+BATCH_PER_DEVICE=1
 NUM_DEVICES=8
 GRAD_ACCUM_STEPS=$((GLOBAL_BATCH_SIZE / (BATCH_PER_DEVICE * NUM_DEVICES)))
 
@@ -24,8 +24,8 @@ deepspeed src/train/train_sft.py \
     --use_liger_kernel True \
     --deepspeed scripts/zero3_offload.json \
     --model_id $MODEL_NAME \
-    --data_path /path/to/your/training/data.json \
-    --image_folder /path/to/your/image/folder \
+    --data_path data/Video-R1-92448.json \
+    --image_folder /mnt/bn/wxd-video-understanding/wangxd/data/Video-R1-data/ \
     --remove_unused_columns False \
     --freeze_vision_tower False \
     --freeze_llm False \
@@ -33,12 +33,14 @@ deepspeed src/train/train_sft.py \
     --bf16 True \
     --fp16 False \
     --disable_flash_attn2 False \
-    --output_dir output/test_train \
+    --output_dir output/normal_train \
     --num_train_epochs 1 \
     --per_device_train_batch_size $BATCH_PER_DEVICE \
     --gradient_accumulation_steps $GRAD_ACCUM_STEPS \
     --video_max_pixels $((360 * 420)) \
-    --fps 1.0 \
+    --vjepa2_model_id /mnt/bn/wxd-video-understanding/wangxd/wm-project/Qwen2-VL-Finetune/vjepa2-vitg-fpc64-384 \
+    --vjepa2_num_frames 64 \
+    --vjepa2_frame_stride 2 \
     --learning_rate 1e-5 \
     --merger_lr 1e-5 \
     --vision_lr 2e-6 \
@@ -48,9 +50,9 @@ deepspeed src/train/train_sft.py \
     --logging_steps 1 \
     --tf32 True \
     --gradient_checkpointing True \
-    --report_to tensorboard \
+    --report_to wandb \
     --lazy_preprocess True \
     --save_strategy "steps" \
-    --save_steps 1 \
-    --save_total_limit 10 \
+    --save_steps 500 \
+    --save_total_limit 5 \
     --dataloader_num_workers 4
