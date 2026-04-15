@@ -1,17 +1,15 @@
 #!/bin/bash
 
-# MODEL_NAME="Qwen/Qwen2-VL-7B-Instruct"
-# MODEL_NAME="Qwen/Qwen2-VL-2B-Instruct"
-# MODEL_NAME="Qwen/Qwen2.5-VL-3B-Instruct"
-# MODEL_NAME="Qwen/Qwen2.5-VL-7B-Instruct"
-# MODEL_NAME="Qwen/Qwen3.5-4B"
+export WANDB_PROJECT="Qwen3-VL-Ins-VJPEA"
+export WANDB_NAME="vjpea-f64-llava-video-2_3_m_youtube_oe_68k"
+export FPS_MAX_FRAMES=64
 
 MODEL_NAME="/mnt/bn/wxd-video-understanding/wangxd/models/Qwen3-VL-8B-Instruct/"
 
 export PYTHONPATH=src:$PYTHONPATH
 
-GLOBAL_BATCH_SIZE=8
-BATCH_PER_DEVICE=1
+GLOBAL_BATCH_SIZE=16
+BATCH_PER_DEVICE=2
 NUM_DEVICES=8
 GRAD_ACCUM_STEPS=$((GLOBAL_BATCH_SIZE / (BATCH_PER_DEVICE * NUM_DEVICES)))
 
@@ -24,8 +22,8 @@ deepspeed src/train/train_sft.py \
     --use_liger_kernel True \
     --deepspeed scripts/zero3_offload.json \
     --model_id $MODEL_NAME \
-    --data_path data/Video-R1-92448.json \
-    --image_folder /mnt/bn/wxd-video-understanding/wangxd/data/Video-R1-data/ \
+    --data_path data/LLaVA-Video-178k-2_3_m_youtube_v0_1-oe-68533.json \
+    --image_folder /mnt/bn/wxd-video-understanding/wangxd/data/LLaVA-Video-178K/ \
     --remove_unused_columns False \
     --freeze_vision_tower False \
     --freeze_llm False \
@@ -33,8 +31,8 @@ deepspeed src/train/train_sft.py \
     --bf16 True \
     --fp16 False \
     --disable_flash_attn2 False \
-    --output_dir output/normal_train \
-    --num_train_epochs 1 \
+    --output_dir output/${WANDB_PROJECT}/${WANDB_NAME} \
+    --num_train_epochs 3 \
     --per_device_train_batch_size $BATCH_PER_DEVICE \
     --gradient_accumulation_steps $GRAD_ACCUM_STEPS \
     --video_max_pixels $((360 * 420)) \

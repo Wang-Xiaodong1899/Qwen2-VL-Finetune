@@ -9,25 +9,23 @@ from transformers import AutoConfig, AutoModel, AutoProcessor, AutoVideoProcesso
 from qwen_vl_utils import process_vision_info
 
 
-def _load_video_for_vjepa2(video_path: str, num_frames: int, stride: int) -> torch.Tensor:
-    # import numpy as np
-    # from decord import VideoReader
-
-    # vr = VideoReader(video_path)
-    # idx = np.arange(0, num_frames * stride, stride, dtype=np.int64)
-    # max_idx = max(len(vr) - 1, 0)
-    # idx = np.clip(idx, 0, max_idx)
-    # video = vr.get_batch(idx).asnumpy()
-    # return torch.from_numpy(video).permute(0, 3, 1, 2)
+def _load_video_for_vjepa2(video_path: str, num_frames: int) -> torch.Tensor:
     from torchcodec.decoders import VideoDecoder
     TORCHCODEC_NUM_THREADS = int(os.environ.get('TORCHCODEC_NUM_THREADS', 8))
     decoder = VideoDecoder(video_path, num_ffmpeg_threads=TORCHCODEC_NUM_THREADS)
-    video_fps = decoder.metadata.average_fps
     total_frames = decoder.metadata.num_frames
-    max_idx = max(total_frames - 1, 0)
-    idx = np.arange(0, num_frames * stride, stride, dtype=np.int64)
-    idx = np.clip(idx, 0, max_idx).tolist()
-    video = decoder.get_frames_at(indices=idx).data
+    
+    # 均匀采样 num_frames 帧
+    if total_frames >= num_frames:
+        # 在 [0, total_frames-1] 范围内均匀取 num_frames 个索引
+        indices = np.linspace(0, total_frames - 1, num_frames, dtype=np.int64)
+    else:
+        # 如果视频帧数不足，则重复最后一帧（或可以选择重复采样）
+        indices = np.arange(total_frames)
+        # 重复最后一帧直到达到 num_frames
+        indices = np.pad(indices, (0, num_frames - total_frames), constant_values=total_frames - 1)
+    
+    video = decoder.get_frames_at(indices=indices.tolist()).data
     return video
 
 def _compute_vjepa_visual_embeds(
@@ -44,7 +42,7 @@ def _compute_vjepa_visual_embeds(
     vjepa2_processor = AutoVideoProcessor.from_pretrained(vjepa2_model_id)
 
     with torch.inference_mode():
-        video = _load_video_for_vjepa2(video_path, num_frames=num_frames, stride=stride)
+        video = _load_video_for_vjepa2(video_path, num_frames=num_frames)
         x = vjepa2_processor(video, return_tensors="pt")["pixel_values_videos"].to(device=device, dtype=dtype)
         feats = vjepa2.get_vision_features(x)
 

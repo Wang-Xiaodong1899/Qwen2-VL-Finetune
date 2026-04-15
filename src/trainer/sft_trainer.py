@@ -119,12 +119,18 @@ class QwenSFTTrainer(Trainer):
         from torchcodec.decoders import VideoDecoder
         TORCHCODEC_NUM_THREADS = int(os.environ.get('TORCHCODEC_NUM_THREADS', 8))
         decoder = VideoDecoder(video_path, num_ffmpeg_threads=TORCHCODEC_NUM_THREADS)
-        video_fps = decoder.metadata.average_fps
         total_frames = decoder.metadata.num_frames
-        max_idx = max(total_frames - 1, 0)
-        idx = np.arange(0, num_frames * stride, stride, dtype=np.int64)
-        idx = np.clip(idx, 0, max_idx).tolist()
-        video = decoder.get_frames_at(indices=idx).data
+        # 均匀采样 num_frames 帧
+        if total_frames >= num_frames:
+            # 在 [0, total_frames-1] 范围内均匀取 num_frames 个索引
+            indices = np.linspace(0, total_frames - 1, num_frames, dtype=np.int64)
+        else:
+            # 如果视频帧数不足，则重复最后一帧（或可以选择重复采样）
+            indices = np.arange(total_frames)
+            # 重复最后一帧直到达到 num_frames
+            indices = np.pad(indices, (0, num_frames - total_frames), constant_values=total_frames - 1)
+        
+        video = decoder.get_frames_at(indices=indices.tolist()).data
         return video
 
     def _compute_vjepa_visual_embeds(self, video_paths_batch, device: torch.device):
